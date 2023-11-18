@@ -35,12 +35,14 @@ All the tests should be passing
 
 ### Initialize the Hardhat EVM node
 
+This command initializes a local development node
 ```shell
 npx hardhat node
 ```
 
 ### Run the "deploy.js" Script
 
+This will deploy the contracts to the local node
 ```bash
-npx hardhat --network localhost ./scripts/deploy.js
+npx hardhat --network localhost run ./scripts/deploy.js
 ```

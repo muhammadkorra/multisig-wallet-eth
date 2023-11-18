@@ -124,6 +124,7 @@ contract MultiSig {
         emit TransactionApproved(_trxnId, msg.sender);
 
         // if transaction quorum is reached emit the approved event
+        // useful if listening to events from a front end app - instead of polling
         if(trxn.quorum >= requiredQuorum)
             emit TransactionConfirmed(_trxnId, trxn.quorum);
     }
