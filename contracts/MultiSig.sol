@@ -33,8 +33,16 @@ contract MultiSig {
     // to permit O(1) lookup for the signers, instead O(n) every time a function is called
     mapping(address => bool) public isSigner;
 
+    // add this mapping to avoid duplicating approvals
+    // this maps trxnId => signerAddress => alreadyApproved (true/false)
+    mapping(uint256 => mapping(address => bool)) alreadyApproved;
+
     // the list of transactions since contract deployment
     Transaction[] public transactions;
+
+    /**
+     *   Events
+     */
 
     // event emitted when a new transaction is proposed
     event TransactionProposed(uint256 trxnId, address proposedBy);
@@ -46,17 +54,17 @@ contract MultiSig {
     event TransactionApproved(uint256 trxnId, address approvedBy);
 
     // event emitted when a transaction is executed
-    event TransactionExecuted(uint256 trxnId, address destination, address executedBy, uint256 value, bool success);
+    event TransactionExecuted(uint256 trxnId, address destination, address executedBy, uint256 value);
 
-    // error when failing to execute a transaction
-    error FailedToExecuteTransaction(string reason);
+    /**
+     * Modifiers
+     */
 
     // allows only authorized signers and owner to perform the action
     modifier onlySigners() {
         require(msg.sender == owner || isSigner[msg.sender] , "Only contract owner or authorized signers can perform this action");
         _;
     }
-
 
     constructor(address[] memory _signers, uint256 _requiredQuorum) {
         owner = msg.sender;
@@ -101,10 +109,16 @@ contract MultiSig {
         // make sure that it is not already executed
         require(!transactions[_trxnId].executed, "Transaction already executed");
 
+        // make sure that the approvals are unique
+        require(!alreadyApproved[_trxnId][msg.sender], "Signer can only approve once");
+
         Transaction storage trxn = transactions[_trxnId];
 
         // increment number of received confirmations
         trxn.quorum += 1;
+
+        // add the address to the signers that already approved the transaction
+        alreadyApproved[_trxnId][msg.sender] = true;
 
         // emit the confirmed event
         emit TransactionApproved(_trxnId, msg.sender);
@@ -114,5 +128,28 @@ contract MultiSig {
             emit TransactionConfirmed(_trxnId, trxn.quorum);
     }
 
-    function executeTransaction(uint256 _trxnId) external {}
+    function executeTransaction(uint256 _trxnId) external onlySigners {
+        // verify transaction exists
+        require(transactions.length > _trxnId, "Transaction does not exist");
+
+        // make sure that the transaction has not already executed
+        require(!transactions[_trxnId].executed, "Transaction already executed");
+
+        Transaction storage trxn = transactions[_trxnId];
+
+        // make sure that the transaction reached quorum
+        require(trxn.quorum >= requiredQuorum, "Transaction has not yet reached the required quorum");
+
+        // mark it as executed before executing to avoid reentrancy attacks
+        trxn.executed = true;
+
+        // execute transaction
+        (bool success, ) = trxn.destination.call{ value: trxn.value }(trxn.data);
+
+        // verify transaction success
+        require(success, "Failed to execute transaction");
+
+        // emit execution event
+        emit TransactionExecuted(_trxnId, trxn.destination, msg.sender, trxn.value);
+    }
 }

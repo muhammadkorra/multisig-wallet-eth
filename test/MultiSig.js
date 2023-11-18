@@ -14,6 +14,26 @@ describe("MultiSig Contract", function() {
         return { owner, multiSig, signer1, signer2 }
     }
 
+    // another fixture to propose a transaction
+    async function deployWithProposedTransaction() {
+        const { multiSig, owner, signer1, signer2 } = await loadFixture(deployContractFixture);
+        const signers = await ethers.getSigners();
+
+        // propse a transaction from a non-signer
+        await multiSig.connect(signers[3]).proposeTransaction(signers[4].address, 100, "0x");
+
+        return { multiSig, owner, signer1, signer2, signers }
+    }
+
+    async function deployWithConfirmedTransactionFixture() {
+        const { multiSig, signer1, signer2, owner, signers } = await loadFixture(deployWithProposedTransaction);
+
+        await multiSig.connect(signer1).approveTransaction(0);
+        await multiSig.connect(signer2).approveTransaction(0);
+
+        return { multiSig, signer1, signer2, owner, signers }
+    }
+
     describe("Deployment", function() {
 
         it("Should set the right owner", async function() {
@@ -63,11 +83,7 @@ describe("MultiSig Contract", function() {
         })
 
         it("Should approve a valid transactions", async function() {
-            const { multiSig, signer1 } = await loadFixture(deployContractFixture);
-            const signers = await ethers.getSigners();
-
-            // propse a transaction from a non-signer
-            await multiSig.connect(signers[3]).proposeTransaction(signers[4].address, 100, "0x");
+            const { multiSig, signer1 } = await loadFixture(deployWithProposedTransaction);
 
             // approve the transaction from a valid signer
             await expect(multiSig.connect(signer1).approveTransaction(0))
@@ -80,15 +96,55 @@ describe("MultiSig Contract", function() {
             expect(trxn.quorum).to.be.equal(1);
         })
 
-        it("Should fail to confirm if sender is not a valid signer", async function(){
-            const { multiSig } = await loadFixture(deployContractFixture);
-            const signers = await ethers.getSigners();
-
-            // propose a transaction
-            await multiSig.connect(signers[3]).proposeTransaction(signers[4].address, 100, "0x");
+        it("Should fail to approve transaction if sender is not a valid signer", async function(){
+            const { multiSig, signers } = await loadFixture(deployWithProposedTransaction);
 
             await expect(multiSig.connect(signers[5]).approveTransaction(0))
                 .to.be.revertedWith("Only contract owner or authorized signers can perform this action");
+        })
+
+        it("Should fail to approve more than once for the same signer", async function() {
+            const { multiSig, signer2 } = await loadFixture(deployWithProposedTransaction);
+        
+            // duplicate approvals from signer2
+            await multiSig.connect(signer2).approveTransaction(0);
+
+            await expect(multiSig.connect(signer2).approveTransaction(0))
+                .to.be.revertedWith("Signer can only approve once");
+        })
+
+        it("Should confirm the transaction after required quorum number", async function(){
+            const { multiSig, signer1, signer2 } = await loadFixture(deployWithProposedTransaction);
+            
+            // first approval
+            await multiSig.connect(signer1).approveTransaction(0);
+            
+            // second approval -- emits the confirmation
+            await expect(multiSig.connect(signer2).approveTransaction(0))
+                .to.emit(multiSig, "TransactionConfirmed")
+                .withArgs(0, REQUIRED_QUORUM);
+        })
+
+        it("Should fail to execute transaction if sender is not a valid signer", async function() {
+            const { multiSig, signers } = await loadFixture(deployWithProposedTransaction);
+
+            await expect(multiSig.connect(signers[4]).executeTransaction(0))
+                .to.be.revertedWith("Only contract owner or authorized signers can perform this action");
+        })
+
+
+        it("Should fail to execute transaction if does not have enough quorum", async function() {
+            const { multiSig, signer1 } = await loadFixture(deployWithProposedTransaction);
+
+            await expect(multiSig.connect(signer1).executeTransaction(0))
+                .to.be.revertedWith("Transaction has not yet reached the required quorum");
+        })
+        
+
+        it("Should execute if reached enough quorum", async function() {
+            const { multiSig, signer1, signer2 } = await loadFixture(deployWithConfirmedTransactionFixture);
+
+            await multiSig.connect(signer1).executeTransaction(0);
         })
     })
 })
