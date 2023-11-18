@@ -1,0 +1,15 @@
+{
+  "name": "multisig-wallet-eth",
+  "version": "1.0.0",
+  "description": "Multi Signature Wallet Smart Contract in Solidity using Hardhat for EVM-Compatible Blockchains",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Mohammad Korra (muhammadkorra@gmail.com)",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.1"
+  }
+}
