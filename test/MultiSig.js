@@ -3,6 +3,7 @@ const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helper
 const { ethers } = require('hardhat');
 
 const REQUIRED_QUORUM = 2;
+const TRXN_ID = 0;
 
 describe("MultiSig Contract", function() {
 
@@ -19,19 +20,25 @@ describe("MultiSig Contract", function() {
         const { multiSig, owner, signer1, signer2 } = await loadFixture(deployContractFixture);
         const signers = await ethers.getSigners();
 
-        // propse a transaction from a non-signer
-        await multiSig.connect(signers[3]).proposeTransaction(signers[4].address, 100, "0x");
+        // deploy the test contract
+        const test = await ethers.deployContract("Test");
+        
+        // prepare transaction data
+        const trxn = await test.increment.populateTransaction();
 
-        return { multiSig, owner, signer1, signer2, signers }
+        // propse a transaction from a non-signer
+        await multiSig.connect(signers[3]).proposeTransaction(trxn.to, 0, trxn.data);
+
+        return { multiSig, test, owner, signer1, signer2, signers }
     }
 
     async function deployWithConfirmedTransactionFixture() {
-        const { multiSig, signer1, signer2, owner, signers } = await loadFixture(deployWithProposedTransaction);
+        const { multiSig, signer1, signer2, owner, signers, test } = await loadFixture(deployWithProposedTransaction);
 
-        await multiSig.connect(signer1).approveTransaction(0);
-        await multiSig.connect(signer2).approveTransaction(0);
+        await multiSig.connect(signer1).approveTransaction(TRXN_ID);
+        await multiSig.connect(signer2).approveTransaction(TRXN_ID);
 
-        return { multiSig, signer1, signer2, owner, signers }
+        return { multiSig, test, signer1, signer2, owner, signers }
     }
 
     describe("Deployment", function() {
@@ -72,7 +79,7 @@ describe("MultiSig Contract", function() {
                 .withArgs(0, signers[3].address)
 
             // get the transaction
-            const transaction = await multiSig.transactions(0);
+            const transaction = await multiSig.transactions(TRXN_ID);
             
             // validate transaction parameters
            expect(transaction.destination).to.equal(signers[4].address);
@@ -86,11 +93,11 @@ describe("MultiSig Contract", function() {
             const { multiSig, signer1 } = await loadFixture(deployWithProposedTransaction);
 
             // approve the transaction from a valid signer
-            await expect(multiSig.connect(signer1).approveTransaction(0))
+            await expect(multiSig.connect(signer1).approveTransaction(TRXN_ID))
                 .to.emit(multiSig, "TransactionApproved")
-                .withArgs(0, signer1.address);
+                .withArgs(TRXN_ID, signer1.address);
             
-            const trxn = await multiSig.transactions(0);
+            const trxn = await multiSig.transactions(TRXN_ID);
 
             // validate the new quorum count
             expect(trxn.quorum).to.be.equal(1);
@@ -99,7 +106,7 @@ describe("MultiSig Contract", function() {
         it("Should fail to approve transaction if sender is not a valid signer", async function(){
             const { multiSig, signers } = await loadFixture(deployWithProposedTransaction);
 
-            await expect(multiSig.connect(signers[5]).approveTransaction(0))
+            await expect(multiSig.connect(signers[5]).approveTransaction(TRXN_ID))
                 .to.be.revertedWith("Only contract owner or authorized signers can perform this action");
         })
 
@@ -107,9 +114,9 @@ describe("MultiSig Contract", function() {
             const { multiSig, signer2 } = await loadFixture(deployWithProposedTransaction);
         
             // duplicate approvals from signer2
-            await multiSig.connect(signer2).approveTransaction(0);
+            await multiSig.connect(signer2).approveTransaction(TRXN_ID);
 
-            await expect(multiSig.connect(signer2).approveTransaction(0))
+            await expect(multiSig.connect(signer2).approveTransaction(TRXN_ID))
                 .to.be.revertedWith("Signer can only approve once");
         })
 
@@ -117,18 +124,18 @@ describe("MultiSig Contract", function() {
             const { multiSig, signer1, signer2 } = await loadFixture(deployWithProposedTransaction);
             
             // first approval
-            await multiSig.connect(signer1).approveTransaction(0);
+            await multiSig.connect(signer1).approveTransaction(TRXN_ID);
             
             // second approval -- emits the confirmation
-            await expect(multiSig.connect(signer2).approveTransaction(0))
+            await expect(multiSig.connect(signer2).approveTransaction(TRXN_ID))
                 .to.emit(multiSig, "TransactionConfirmed")
-                .withArgs(0, REQUIRED_QUORUM);
+                .withArgs(TRXN_ID, REQUIRED_QUORUM);
         })
 
         it("Should fail to execute transaction if sender is not a valid signer", async function() {
             const { multiSig, signers } = await loadFixture(deployWithProposedTransaction);
 
-            await expect(multiSig.connect(signers[4]).executeTransaction(0))
+            await expect(multiSig.connect(signers[4]).executeTransaction(TRXN_ID))
                 .to.be.revertedWith("Only contract owner or authorized signers can perform this action");
         })
 
@@ -136,15 +143,32 @@ describe("MultiSig Contract", function() {
         it("Should fail to execute transaction if does not have enough quorum", async function() {
             const { multiSig, signer1 } = await loadFixture(deployWithProposedTransaction);
 
-            await expect(multiSig.connect(signer1).executeTransaction(0))
+            await expect(multiSig.connect(signer1).executeTransaction(TRXN_ID))
                 .to.be.revertedWith("Transaction has not yet reached the required quorum");
         })
-        
+
 
         it("Should execute if reached enough quorum", async function() {
-            const { multiSig, signer1, signer2 } = await loadFixture(deployWithConfirmedTransactionFixture);
+            const { multiSig, signer1, test } = await loadFixture(deployWithConfirmedTransactionFixture);
 
-            await multiSig.connect(signer1).executeTransaction(0);
+            // verify that the event was emitted with right paramters
+            await expect(multiSig.connect(signer1).executeTransaction(TRXN_ID))
+                .to.emit(multiSig, "TransactionExecuted")
+                .withArgs(TRXN_ID, await test.getAddress(), signer1.address, 0);
+
+            // verify the transaction executed in the test contract
+            expect(await test.counter()).to.equal(1);
+        })
+
+        it("Should fail to execute the transaction more than once", async function() {
+            const { multiSig, signer1 } = await loadFixture(deployWithConfirmedTransactionFixture);
+
+            // execute first time
+            await multiSig.connect(signer1).executeTransaction(TRXN_ID);
+
+            // execute second time
+            await expect(multiSig.connect(signer1).executeTransaction(TRXN_ID))
+                .to.be.revertedWith("Transaction already executed");
         })
     })
 })

@@ -12,6 +12,27 @@ npm i
 npx hardhat test
 ```
 
+All the tests should be passing
+```shell
+  MultiSig Contract
+    Deployment
+      ✔ Should set the right owner
+      ✔ Should set the right number of quorum
+      ✔ Should set the right signers
+    Transactions
+      ✔ Should propose a new valid transaction
+      ✔ Should approve a valid transactions
+      ✔ Should fail to approve transaction if sender is not a valid signer
+      ✔ Should fail to approve more than once for the same signer
+      ✔ Should confirm the transaction after required quorum number
+      ✔ Should fail to execute transaction if sender is not a valid signer
+      ✔ Should fail to execute transaction if does not have enough quorum
+      ✔ Should execute if reached enough quorum
+      ✔ Should fail to execute the transaction more than once
+
+  12 passing (1s)
+```
+
 ### Initialize the Hardhat EVM node
 
 ```shell
