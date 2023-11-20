@@ -153,4 +153,12 @@ contract MultiSig {
         // emit execution event
         emit TransactionExecuted(_trxnId, trxn.destination, msg.sender, trxn.value);
     }
+
+    function getTransactions() external view returns (Transaction[] memory) {
+        return transactions;
+    }
+
+    function getAuthorizedSigners() external view returns (address[] memory) {
+        return authorizedSigners;
+    }
 }

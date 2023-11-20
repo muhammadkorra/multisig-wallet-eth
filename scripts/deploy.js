@@ -1,7 +1,7 @@
 const { ethers, network, artifacts } = require("hardhat");
 const path = require("path");
 
-function saveServerFiles(multiSigAddress){
+function saveServerFiles(multiSigAddress, testAddress){
     const fs = require("fs");
     const contractsDir = path.join(__dirname, "..", "api", "contracts");
 
@@ -10,14 +10,20 @@ function saveServerFiles(multiSigAddress){
 
     fs.writeFileSync(
         path.join(contractsDir, "contract-address.json"),
-        JSON.stringify({ MultiSig: multiSigAddress }, undefined, 2)
+        JSON.stringify({ MultiSig: multiSigAddress, Test: testAddress }, undefined, 2)
     );
 
     const MultiSigArtifacts = artifacts.readArtifactSync("MultiSig");
+    const TestArtifacts = artifacts.readArtifactSync("Test");
 
     fs.writeFileSync(
         path.join(contractsDir, "MultiSig.json"),
         JSON.stringify(MultiSigArtifacts, null, 2)
+    );
+
+    fs.writeFileSync(
+        path.join(contractsDir, "Test.json"),
+        JSON.stringify(TestArtifacts, null, 2)
     );
 }
 
@@ -47,7 +53,7 @@ async function main() {
 
     console.log(`Test contract deployed to address: ${await testContract.getAddress()}`)
 
-    saveServerFiles(await multiSig.getAddress());
+    saveServerFiles(await multiSig.getAddress(), await testContract.getAddress());
 }
 
 main()
